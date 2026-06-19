@@ -1,0 +1,144 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage{microtype}
+
+\definecolor{behbg}{RGB}{234,243,251}
+\definecolor{groundbg}{RGB}{253,249,227}
+\definecolor{oraclebg}{RGB}{250,250,250}
+\definecolor{goodbg}{RGB}{233,247,239}
+
+\title{\textbf{OPE Results --- assistments8000}}
+\date{2026-03-12}
+\author{geometric\_flow / experiments}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Setup:}
+Train/test split: 80/20 (user-level) $|$
+Rounds: 0--49 $|$
+Target context round: 25 (middle) $|$
+Excluded rounds: none\\
+Train users: 3{,}253 $|$ Test users: 813 $|$ Test samples at last round: 199
+
+\bigskip
+\noindent\colorbox{goodbg}{\parbox{0.97\textwidth}{%
+\textbf{Result:} Best learned policy improves SNIPS over behavior by 6.9\% (0.686 vs.\ 0.641).}}
+
+% ── Table 1 ──────────────────────────────────────────────────────────────────
+\section*{Table 1 — Learned policy values (test set, cumulative, context-reweighted)}
+
+{\small All estimates use the full test trajectory (cumulative), reweighted by
+$q_{\text{target}}(\theta) / q_{\text{all}}(\theta)$ where $q_{\text{target}}$ is the
+training distribution at round 25. \textbf{Bold} = best learned policy by SNIPS.}
+
+\bigskip
+\begin{tabular}{llrrrrrr}
+\toprule
+\textbf{Policy} & \textbf{Obj.} & \textbf{IPS} & \textbf{SNIPS} & \textbf{DR} & \textbf{MIS} & \textbf{DM} & \textbf{ESS} \\
+\midrule
+\rowcolor{behbg}
+\textit{behavior} & \textit{---} & \textit{0.653} & \textit{0.641} & \textit{0.641} & \textit{0.648} & \textit{0.651} & \textit{12976} \\
+\rowcolor{oraclebg}
+\textit{optimal\_irt} & \textit{---} & \textit{0.440} & \textit{0.537} & \textit{0.623} & \textit{0.444} & \textit{0.787} & \textit{1375} \\
+learned\_ips & ips & 0.652 & 0.627 & 0.623 & 0.655 & 0.696 & 5942 \\
+\textbf{learned\_snips} & \textbf{snips} & \textbf{0.696} & \textbf{0.686} & \textbf{0.693} & \textbf{0.694} & \textbf{0.658} & \textbf{12075} \\
+learned\_dr & dr & 0.692 & 0.684 & 0.692 & 0.690 & 0.665 & 12006 \\
+learned\_mis & mis & 0.646 & 0.620 & 0.615 & 0.652 & 0.709 & 4707 \\
+\bottomrule
+\end{tabular}
+
+% ── Table 2 ──────────────────────────────────────────────────────────────────
+\section*{Table 2 — Behavior policy: first vs.\ last round vs.\ cumulative estimator}
+
+{\small The highlighted row (last round $\star$) is the empirical context-reweighted reward at the
+last round --- the ground-truth we aim to beat.
+$\Delta = \text{cumulative estimator} - \text{per-round value}$.
+A large positive $\Delta$ means the cumulative estimator over-estimates relative to the last round.}
+
+\bigskip
+\begin{tabular}{lrrrrrr}
+\toprule
+\textbf{Round} & \textbf{n} & \textbf{Raw} & \textbf{Ctx-rwt} & \textbf{Cumul.\ IPS ($\Delta$)} & \textbf{Cumul.\ SNIPS ($\Delta$)} & \textbf{Cumul.\ DR ($\Delta$)} \\
+\midrule
+Round 0 --- first & 813 & 0.538 & 0.584 & 0.653 ($+$0.069) & 0.641 ($+$0.057) & 0.641 ($+$0.057) \\
+\rowcolor{groundbg}
+\textbf{Round 49 --- last $\star$} & \textbf{199} & \textbf{0.624} & \textbf{0.636} & \textbf{0.653 ($+$0.017)} & \textbf{0.641 ($+$0.006)} & \textbf{0.641 ($+$0.006)} \\
+\bottomrule
+\end{tabular}
+
+% ── Table 3 ──────────────────────────────────────────────────────────────────
+\section*{Table 3 — Behavior policy fit quality per round (train split)}
+
+{\small Truncated Gaussian fitted per round via L-BFGS-B ($\mu$ degree 1, $\log\sigma$ degree 2).
+All 50 rounds converged cleanly; RMSE $\in [0.31, 0.37]$ throughout.
+This is markedly better than \textit{attempts} (rounds 5--7 have RMSE $>$ 19)
+and explains the very small cumulative-vs-last-round gap ($\Delta \approx +0.006$)
+observed in Table 2.}
+
+\bigskip
+\begin{longtable}{rrrrl}
+\toprule
+\textbf{Round} & \textbf{n} & \textbf{RMSE} & \textbf{MAE} & \textbf{Note} \\
+\midrule
+\endhead
+0  & 3253 & 0.309 & 0.241 & \\
+1  & 3091 & 0.314 & 0.243 & \\
+2  & 2944 & 0.313 & 0.246 & \\
+3  & 2848 & 0.315 & 0.246 & \\
+4  & 2740 & 0.327 & 0.255 & \\
+5  & 2617 & 0.334 & 0.259 & \\
+6  & 2511 & 0.329 & 0.257 & \\
+7  & 2405 & 0.324 & 0.255 & \\
+8  & 2308 & 0.323 & 0.253 & \\
+9  & 2245 & 0.332 & 0.260 & \\
+10 & 2111 & 0.343 & 0.268 & \\
+11 & 2031 & 0.325 & 0.255 & \\
+12 & 1950 & 0.337 & 0.263 & \\
+13 & 1886 & 0.348 & 0.271 & \\
+14 & 1815 & 0.344 & 0.268 & \\
+15 & 1736 & 0.345 & 0.268 & \\
+16 & 1666 & 0.341 & 0.267 & \\
+17 & 1613 & 0.356 & 0.279 & \\
+18 & 1561 & 0.354 & 0.277 & \\
+19 & 1510 & 0.351 & 0.272 & \\
+20 & 1472 & 0.345 & 0.271 & \\
+21 & 1436 & 0.365 & 0.284 & \\
+22 & 1404 & 0.362 & 0.286 & \\
+23 & 1381 & 0.360 & 0.282 & \\
+24 & 1342 & 0.358 & 0.282 & \\
+25 & 1312 & 0.362 & 0.281 & target round \\
+26 & 1281 & 0.360 & 0.281 & \\
+27 & 1260 & 0.357 & 0.280 & \\
+28 & 1235 & 0.362 & 0.281 & \\
+29 & 1204 & 0.365 & 0.284 & \\
+30 & 1172 & 0.363 & 0.286 & \\
+31 & 1151 & 0.357 & 0.280 & \\
+32 & 1128 & 0.367 & 0.283 & \\
+33 & 1103 & 0.369 & 0.285 & \\
+34 & 1077 & 0.372 & 0.290 & \\
+35 & 1062 & 0.359 & 0.280 & \\
+36 & 1041 & 0.348 & 0.274 & \\
+37 & 1025 & 0.357 & 0.277 & \\
+38 & 1010 & 0.363 & 0.286 & \\
+39 &  989 & 0.362 & 0.284 & \\
+40 &  964 & 0.352 & 0.278 & \\
+41 &  949 & 0.355 & 0.282 & \\
+42 &  936 & 0.356 & 0.279 & \\
+43 &  926 & 0.368 & 0.292 & \\
+44 &  911 & 0.366 & 0.287 & \\
+45 &  893 & 0.360 & 0.285 & \\
+46 &  887 & 0.353 & 0.282 & \\
+47 &  877 & 0.356 & 0.281 & \\
+48 &  866 & 0.352 & 0.282 & \\
+49 &  856 & 0.352 & 0.284 & last round \\
+\bottomrule
+\end{longtable}
+
+\end{document}

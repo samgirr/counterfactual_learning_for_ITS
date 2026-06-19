@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>OPE — assistments8000</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:980px;margin:36px auto;padding:0 20px;color:#222;line-height:1.55}
+h1{border-bottom:2px solid #333;padding-bottom:6px}
+h2{border-bottom:1px solid #ccc;padding-bottom:3px;margin-top:40px;color:#2c3e50}
+table{border-collapse:collapse;width:100%;margin:10px 0 20px;font-size:.91em}
+th{background:#2c3e50;color:#fff;padding:7px 11px;text-align:right}
+th:first-child{text-align:left}
+td{padding:6px 11px;border-bottom:1px solid #e8e8e8;text-align:right}
+td:first-child{text-align:left}
+tr.beh td{background:#eaf3fb;color:#555;font-style:italic}
+tr.best td{font-weight:bold}
+tr.oracle td{background:#fafafa;color:#999;font-style:italic}
+tr.ground td{background:#fdf9e3;font-weight:bold}
+.note{font-size:.84em;color:#666;margin:2px 0 14px}
+.warn{background:#fff3cd;border-left:4px solid #f0ad4e;padding:8px 12px;margin:10px 0;font-size:.88em;border-radius:0 4px 4px 0}
+.good{background:#e9f7ef;border-left:4px solid #27ae60;padding:8px 12px;margin:10px 0;font-size:.88em;border-radius:0 4px 4px 0}
+.meta{color:#888;font-size:.83em}
+</style>
+</head>
+<body>
+<h1>OPE Results — assistments8000</h1>
+<p class="meta">
+  Train/test split: 80/20 (user-level) &nbsp;|&nbsp;
+  Rounds: 0–49 &nbsp;|&nbsp;
+  Target context round: 25 (middle) &nbsp;|&nbsp;
+  Excluded rounds: none<br>
+  Train users: 3,253 &nbsp;|&nbsp; Test users: 813 &nbsp;|&nbsp;
+  Test samples at last round: 199
+</p>
+
+<div class="good">✓ Best learned policy improves SNIPS over behavior by 6.9% (0.686 vs. 0.641).</div>
+
+
+<h2>Table 1 — Learned policy values (test set, cumulative, context-reweighted)</h2>
+<p class="note">
+  All estimates use the full test trajectory (cumulative), reweighted by
+  q<sub>target</sub>(θ) / q<sub>all</sub>(θ) where q<sub>target</sub> is the
+  training distribution at round 25.
+  Bold = best learned policy by SNIPS.
+</p>
+<table>
+  <tr>
+    <th>Policy</th><th>Objective</th>
+    <th>IPS</th><th>SNIPS</th><th>DR</th><th>MIS</th><th>DM</th><th>ESS</th>
+  </tr>
+  <tr class="beh"><td>behavior</td><td>—</td><td>0.653</td><td>0.641</td><td>0.641</td><td>0.648</td><td>0.651</td><td>12976</td></tr>
+<tr class="oracle"><td>optimal_irt</td><td>—</td><td>0.440</td><td>0.537</td><td>0.623</td><td>0.444</td><td>0.787</td><td>1375</td></tr>
+<tr class=""><td>learned_ips</td><td>ips</td><td>0.652</td><td>0.627</td><td>0.623</td><td>0.655</td><td>0.696</td><td>5942</td></tr>
+<tr class="best"><td>learned_snips</td><td>snips</td><td>0.696</td><td>0.686</td><td>0.693</td><td>0.694</td><td>0.658</td><td>12075</td></tr>
+<tr class=""><td>learned_dr</td><td>dr</td><td>0.692</td><td>0.684</td><td>0.692</td><td>0.690</td><td>0.665</td><td>12006</td></tr>
+<tr class=""><td>learned_mis</td><td>mis</td><td>0.646</td><td>0.620</td><td>0.615</td><td>0.652</td><td>0.709</td><td>4707</td></tr>
+
+</table>
+
+<h2>Table 2 — Behavior policy: first vs. last round vs. cumulative estimator</h2>
+<p class="note">
+  The yellow row (last round ★) is the empirical context-reweighted reward at the
+  last round — the ground-truth we aim to beat.
+  Parentheses show Δ = cumulative estimator − per-round value.
+  A large positive Δ means the cumulative estimator over-estimates relative to the last round.
+</p>
+<table>
+  <tr>
+    <th>Round</th><th>n (test)</th>
+    <th>Raw mean reward</th><th>Ctx-reweighted reward</th>
+    <th>Cumul. IPS (Δ)</th><th>Cumul. SNIPS (Δ)</th><th>Cumul. DR (Δ)</th>
+  </tr>
+  <tr><td>Round 0 — first</td><td>813</td><td>0.538</td><td>0.584</td><td>0.653 (+0.069)</td><td>0.641 (+0.057)</td><td>0.641 (+0.057)</td></tr>
+<tr class="ground"><td>Round 49 — last ★</td><td>199</td><td>0.624</td><td>0.636</td><td>0.653 (+0.017)</td><td>0.641 (+0.006)</td><td>0.641 (+0.006)</td></tr>
+
+</table>
+
+<hr>
+<p class="meta">geometric_flow / experiments · 2026-03-12</p>
+</body>
+</html>

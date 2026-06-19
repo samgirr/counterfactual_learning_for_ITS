@@ -1,0 +1,137 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage{microtype}
+
+\definecolor{behbg}{RGB}{234,243,251}
+\definecolor{groundbg}{RGB}{253,249,227}
+\definecolor{oraclebg}{RGB}{250,250,250}
+\definecolor{warnbg}{RGB}{255,243,205}
+\definecolor{goodbg}{RGB}{233,247,239}
+\definecolor{headerbg}{RGB}{44,62,80}
+
+\title{\textbf{OPE Results --- attempts}}
+\date{2026-03-12}
+\author{geometric\_flow / experiments}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Setup:}
+Train/test split: 80/20 (user-level) $|$
+Rounds: 0--29 $|$
+Target context round: 16 (middle) $|$
+Excluded rounds: 5, 6, 7\\
+Train users: 16{,}445 $|$ Test users: 4{,}111 $|$ Test samples at last round: 354
+
+\bigskip
+\noindent\colorbox{warnbg}{\parbox{0.97\textwidth}{%
+\textbf{Warning:} Rounds [5, 6, 7] excluded (behavior RMSE $> 5.0$). These rounds had degenerate fits
+(likely bimodal difficulty distribution with a spike at $\delta_{\min}$).
+They are removed from both training and test estimators.}}
+
+\medskip
+\noindent\colorbox{goodbg}{\parbox{0.97\textwidth}{%
+\textbf{Result:} Best learned policy improves SNIPS over behavior by 22.5\% (2.426 vs.\ 1.981).}}
+
+% ── Table 1 ──────────────────────────────────────────────────────────────────
+\section*{Table 1 — Learned policy values (test set, cumulative, context-reweighted)}
+
+{\small All estimates use the full test trajectory (cumulative), reweighted by
+$q_{\text{target}}(\theta) / q_{\text{all}}(\theta)$ where $q_{\text{target}}$ is the
+training distribution at round 16. \textbf{Bold} = best learned policy by SNIPS.}
+
+\bigskip
+\begin{tabular}{llrrrrrr}
+\toprule
+\textbf{Policy} & \textbf{Obj.} & \textbf{IPS} & \textbf{SNIPS} & \textbf{DR} & \textbf{MIS} & \textbf{DM} & \textbf{ESS} \\
+\midrule
+\rowcolor{behbg}
+\textit{behavior} & \textit{---} & \textit{1.968} & \textit{1.981} & \textit{2.006} & \textit{2.139} & \textit{2.013} & \textit{8554} \\
+\rowcolor{oraclebg}
+\textit{optimal\_irt} & \textit{---} & \textit{1.694} & \textit{2.370} & \textit{2.408} & \textit{2.563} & \textit{2.443} & \textit{2873} \\
+learned\_ips & ips & 2.332 & 2.360 & 2.361 & 2.749 & 2.241 & 8000 \\
+learned\_snips & snips & 2.347 & 2.409 & 2.408 & 2.858 & 2.274 & 7446 \\
+learned\_dr & dr & 2.315 & 2.425 & 2.431 & 2.875 & 2.305 & 6786 \\
+\textbf{learned\_mis} & \textbf{mis} & \textbf{2.302} & \textbf{2.426} & \textbf{2.432} & \textbf{2.868} & \textbf{2.309} & \textbf{6673} \\
+\bottomrule
+\end{tabular}
+
+% ── Table 2 ──────────────────────────────────────────────────────────────────
+\section*{Table 2 — Behavior policy: first vs.\ last round vs.\ cumulative estimator}
+
+{\small The highlighted row (last round $\star$) is the empirical context-reweighted reward at the
+last round --- the ground-truth we aim to beat.
+$\Delta = \text{cumulative estimator} - \text{per-round value}$.
+A large positive $\Delta$ means the cumulative estimator over-estimates relative to the last round.}
+
+\bigskip
+\begin{tabular}{lrrrrrr}
+\toprule
+\textbf{Round} & \textbf{n} & \textbf{Raw} & \textbf{Ctx-rwt} & \textbf{Cumul.\ IPS ($\Delta$)} & \textbf{Cumul.\ SNIPS ($\Delta$)} & \textbf{Cumul.\ DR ($\Delta$)} \\
+\midrule
+Round 0 --- first & 4111 & 1.558 & 1.619 & 1.968 ($+$0.349) & 1.981 ($+$0.362) & 2.006 ($+$0.387) \\
+\rowcolor{groundbg}
+\textbf{Round 29 --- last $\star$} & \textbf{354} & \textbf{1.998} & \textbf{1.877} & \textbf{1.968 ($+$0.091)} & \textbf{1.981 ($+$0.104)} & \textbf{2.006 ($+$0.130)} \\
+\bottomrule
+\end{tabular}
+
+% ── Table 3 ──────────────────────────────────────────────────────────────────
+\section*{Table 3 — Behavior policy fit quality per round (train split)}
+
+{\small Truncated Gaussian fitted per round via L-BFGS-B ($\mu$ degree 1, $\log\sigma$ degree 2).
+RMSE and MAE measure the deviation of predicted difficulty $\hat\delta(\theta)$ from observed $\delta$.
+\colorbox{red!20}{Red rows} were auto-excluded (RMSE $> 5.0$): the optimizer found a degenerate
+solution with $\mu \ll \delta_{\min}$ and very large $\sigma$, likely caused by a bimodal
+difficulty distribution with a spike at $\delta_{\min}$.
+Compare with \textit{assistments8000} (RMSE $\in [0.31, 0.37]$) and
+\textit{skill\_builder} (RMSE $\in [0.51, 0.57]$) where all rounds are well-fitted.}
+
+\bigskip
+\begin{longtable}{rrrrl}
+\toprule
+\textbf{Round} & \textbf{n} & \textbf{RMSE} & \textbf{MAE} & \textbf{Note} \\
+\midrule
+\endhead
+0  & 16445 & 0.638 & 0.263 & \\
+1  & 14392 & 0.838 & 0.477 & \\
+2  & 13410 & 0.921 & 0.561 & \\
+3  & 12798 & 0.861 & 0.532 & \\
+4  & 12294 & 1.597 & 1.372 & borderline \\
+\rowcolor{red!20}
+5  & 11780 & 19.137 & 18.916 & \textbf{excluded} \\
+\rowcolor{red!20}
+6  & 11285 & 27.140 & 27.003 & \textbf{excluded} \\
+\rowcolor{red!20}
+7  & 10798 & 29.548 & 29.419 & \textbf{excluded} \\
+8  & 10204 & 1.984  & 1.621 & \\
+9  &  9598 & 1.122  & 0.978 & \\
+10 &  8860 & 1.037  & 0.867 & \\
+11 &  8120 & 0.932  & 0.756 & \\
+12 &  7418 & 0.943  & 0.745 & \\
+13 &  6808 & 0.817  & 0.652 & \\
+14 &  6212 & 0.811  & 0.642 & \\
+15 &  5680 & 0.829  & 0.669 & \\
+16 &  5179 & 0.812  & 0.635 & target round \\
+17 &  4679 & 0.824  & 0.645 & \\
+18 &  4208 & 0.820  & 0.617 & \\
+19 &  3845 & 0.900  & 0.710 & \\
+20 &  3471 & 0.899  & 0.714 & \\
+21 &  3152 & 0.914  & 0.716 & \\
+22 &  2859 & 0.892  & 0.699 & \\
+23 &  2561 & 0.917  & 0.714 & \\
+24 &  2291 & 0.930  & 0.714 & \\
+25 &  2082 & 0.981  & 0.774 & \\
+26 &  1892 & 1.000  & 0.785 & \\
+27 &  1718 & 0.948  & 0.738 & \\
+28 &  1552 & 1.008  & 0.791 & \\
+29 &  1434 & 1.025  & 0.825 & last round \\
+\bottomrule
+\end{longtable}
+
+\end{document}

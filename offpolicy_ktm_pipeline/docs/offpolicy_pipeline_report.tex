@@ -1,0 +1,330 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\title{Off-Policy KTM Pipeline: End-to-End Methodology}
+\author{Geometric Flow Repository}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Goal}
+This document describes the full experimental pipeline implemented in:
+\begin{itemize}
+  \item \texttt{offpolicy\_ktm\_pipeline/run\_full\_pipeline.py}
+  \item \texttt{offpolicy\_ktm\_pipeline/src/*.py}
+\end{itemize}
+
+The pipeline has two main parts:
+\begin{enumerate}
+  \item Build a contextual logging dataset $(\theta,\delta,r,o)$ from student-item logs.
+  \item Learn and evaluate a new policy for item difficulty selection with off-policy estimators.
+\end{enumerate}
+
+\section{Data Processing and KTM Latents}
+\subsection{PIX preprocessing}
+For PIX-like data, \texttt{data/pix\_processing.py} applies:
+\begin{itemize}
+  \item ID remapping to contiguous integers for user/item/skill.
+  \item \texttt{answer\_result} mapping:
+  \[
+  \texttt{ok}\mapsto 1,\quad \texttt{ko}\mapsto 0,\quad \texttt{aband}\mapsto 0.5
+  \]
+  \item Binary outcome column:
+  \[
+  \texttt{outcome} =
+  \begin{cases}
+  0 & \text{if } \texttt{answer\_result}=0.5\\
+  \texttt{answer\_result} & \text{otherwise}
+  \end{cases}
+  \]
+\end{itemize}
+
+\subsection{KTM-style latent construction}
+\texttt{models/ktm.py::processing\_data} fits a one-hot user-item logistic model:
+\[
+\Pr(y=1\mid u,i)=\sigma\!\left(\beta_u+\gamma_i+b\right)
+\]
+Then defines:
+\[
+\theta_u=\beta_u,\qquad \delta_i=-\gamma_i
+\]
+where $\theta_u$ is proficiency and $\delta_i$ is item difficulty.
+
+It then:
+\begin{itemize}
+  \item ranks users and items by latent value (for stable integer IDs),
+  \item attaches \texttt{proficiency} and \texttt{difficulties},
+  \item builds sequence fields:
+  \[
+  \texttt{sequence\_position},\ \texttt{sequence\_length},\ \texttt{order\_sequence}.
+  \]
+\end{itemize}
+
+\section{Round Construction}
+The pipeline trains/evaluates by rounds indexed by \texttt{order\_sequence}. If needed, long tails are compressed to a fixed number of rounds (\texttt{--max-rounds}) with:
+\begin{itemize}
+  \item \texttt{tail}: keep early rounds, merge tail into final bucket.
+  \item \texttt{quantile}: weighted quantile bucketing by observation count.
+  \item \texttt{tail\_count\_at\_n}: after round $N$, aggregate tail windows to roughly match count at round $N$.
+\end{itemize}
+
+\section{Behavior Policy via Gaussian Regression}
+For each round $o$, \texttt{fit\_gaussian\_by\_order} fits:
+\[
+\delta \mid \theta,o \sim \mathcal{N}(\mu_o(\theta),\sigma_o(\theta)^2)
+\]
+with polynomial parameterization:
+\[
+\mu_o(\theta)=\sum_{d=0}^{D_\mu}\beta^{(\mu)}_{o,d}\theta^d,\qquad
+\log \sigma_o(\theta)=\sum_{d=0}^{D_\sigma}\beta^{(\sigma)}_{o,d}\theta^d
+\]
+and hard floor:
+\[
+\sigma_o(\theta)=\max\!\left(\exp(\log \sigma_o(\theta)),\sigma_{\min}\right),
+\]
+where \texttt{sigma\_floor} is typically $0.2$.
+
+The per-round fit minimizes average Gaussian negative log-likelihood:
+\[
+\mathcal{L}_{\text{NLL}}=
+\frac{1}{n}\sum_{j=1}^n
+\left[
+\frac{1}{2}\log(2\pi)+\log \sigma_o(\theta_j)
++\frac{1}{2}\left(\frac{\delta_j-\mu_o(\theta_j)}{\sigma_o(\theta_j)}\right)^2
+\right].
+\]
+
+\section{Propensity and Reward}
+After attaching round-specific behavior parameters, each tuple gets:
+\[
+\log \pi_b(\delta\mid\theta,o)=
+-\frac{1}{2}\log(2\pi)-\log \sigma_o(\theta)
+-\frac{1}{2}\left(\frac{\delta-\mu_o(\theta)}{\sigma_o(\theta)}\right)^2.
+\]
+
+Reward is defined as:
+\[
+r = \texttt{correct}\cdot(\delta-\delta_{\min}),
+\]
+so successful responses on harder items get larger reward.
+
+\section{Learned Policy and Training Objective}
+\subsection{Policy class}
+\texttt{models/offpolicy\_gaussian\_policy.py::GlobalGaussianPolicy} learns one global policy:
+\[
+\pi_\phi(\delta\mid\theta)=\mathcal{N}(\mu_\phi(\theta),\sigma_\phi(\theta)^2),
+\]
+\[
+\mu_\phi(\theta)=\sum_{d=0}^{D_\mu}\alpha_d\theta^d,\qquad
+\log \sigma_\phi(\theta)=\sum_{d=0}^{D_\sigma}\eta_d\theta^d,\qquad
+\sigma_\phi(\theta)\ge \sigma_{\min}.
+\]
+
+\subsection{Importance weights}
+For each sample:
+\[
+w=\exp\left(\log \pi_\phi(\delta\mid\theta)-\log \pi_b(\delta\mid\theta,o)\right),
+\qquad
+\tilde{w}=\min(w,c_{\text{clip}}).
+\]
+The code also clips log-ratio and max weight for stability.
+
+\subsection{Optimized objectives}
+Supported objectives (\texttt{--objective}):
+\[
+\widehat{V}_{\text{IPS}}=\frac{1}{n}\sum_i w_i r_i,\quad
+\widehat{V}_{\text{SNIPS}}=\frac{\sum_i w_i r_i}{\sum_i w_i},
+\]
+\[
+\widehat{V}_{\text{CIPS}}=\frac{1}{n}\sum_i \tilde{w}_i r_i,\quad
+\widehat{V}_{\text{CSNIPS}}=\frac{\sum_i \tilde{w}_i r_i}{\sum_i \tilde{w}_i}.
+\]
+
+Training minimizes:
+\[
+\mathcal{J}(\phi)=
+-\widehat{V}_{\text{obj}}
++\lambda_2\left(\|\alpha\|_2^2+\|\eta\|_2^2\right)
++\lambda_{\text{var}}\sqrt{\frac{1}{t}}\sqrt{\operatorname{Var}(\text{contrib})},
+\]
+where $t$ is minibatch size and \texttt{contrib} is the per-sample term used by the selected estimator.
+
+\section{Context Reweighting}
+To handle context shift across rounds, the pipeline can use a target context distribution $q(\theta)$ (for example \texttt{best\_round\_in\_k}) and per-sample ratio:
+\[
+\omega(\theta)=\frac{q(\theta)}{p_t(\theta)}
+\]
+estimated from histograms and clipped. These context weights are used:
+\begin{itemize}
+  \item in training (\texttt{--context-match-sampling}),
+  \item in evaluation (reported \texttt{*\_q\_*} metrics).
+\end{itemize}
+
+\section{Model-Based IRT Value Metrics}
+The pipeline reports model-based values using:
+\[
+\Pr(\text{correct}=1\mid\theta,\delta)=\sigma(\theta-\delta),
+\quad
+r(\theta,\delta)=\sigma(\theta-\delta)(\delta-\delta_{\min}).
+\]
+
+For policy $\pi$:
+\[
+V_{\text{IRT}}(\pi)=\mathbb{E}_{\theta\sim p}\mathbb{E}_{\delta\sim\pi(\cdot\mid\theta)}[r(\theta,\delta)],
+\]
+estimated by Monte Carlo (\texttt{mc\_policy\_value}).
+
+The oracle curve is:
+\[
+\delta^\star(\theta)\in\arg\max_{\delta\in[\delta_{\min},\delta_{\max}]}
+\sigma(\theta-\delta)(\delta-\delta_{\min}),
+\]
+and the corresponding value is reported as \texttt{optimal\_irt\_value}.
+
+\section{Experiment}
+\subsection{Protocol}
+We ran the simplified cumulative-last-round pipeline in
+\texttt{offpolicy\_ktm\_pipeline/run\_last\_round\_simple.py} on three datasets:
+\begin{itemize}
+  \item PIX (\texttt{pix\_processed.csv}),
+  \item SkillBuilder (\texttt{skill\_builder\_2015\_mintrace10.csv}),
+  \item Assistments-like (\texttt{data\_with\_answer\_number.csv}).
+\end{itemize}
+
+Common settings:
+\begin{itemize}
+  \item \texttt{ktm\_c=0.1}, strict 1PL KTM with no intercept;
+  \item behavior model: truncated Gaussian with $\mu(\theta)$ degree 1 and $\log\sigma(\theta)$ degree 2;
+  \item context target: ``best round in first $N/2$'' (closest to last-round context);
+  \item context reweighting with histogram ratio, \texttt{context\_bins=60}, \texttt{context\_ratio\_clip=10};
+  \item IS weight cap \texttt{max\_weight=20}, policy sigma floor \texttt{0.2};
+  \item rounds capped to 20 (\texttt{tail} strategy), training scope cumulative at final round;
+  \item objectives trained separately: IPS, SNIPS, DR, MIS, DM.
+\end{itemize}
+
+Batch size followed a rule-of-thumb targeting roughly $50$--$100$ updates per epoch:
+\texttt{4096} (Assistments), \texttt{8192} (SkillBuilder), \texttt{32768} (PIX).
+
+\subsection{Final-Round Learned Policy Values}
+Table~\ref{tab:final_learned} reports the final-round values of the \emph{learned policy}
+under each estimator. Two robust trends are visible:
+\begin{itemize}
+  \item For PIX, DR/SNIPS/MIS policies are close in value, with large ESS.
+  \item For Assistments and SkillBuilder, IPS/MIS-optimized policies tend to give
+  higher IPS/MIS metrics, while DR/SNIPS-optimized policies are more conservative.
+\end{itemize}
+This confirms that objective choice primarily changes the policy shape in regions with
+strong weighting effects, while remaining in a similar performance band for stable datasets.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Final-round learned policy values across datasets/objectives (ESS in thousands).}
+\label{tab:final_learned}
+\input{generated_tables/table_final_learned_results.tex}
+\end{table}
+
+\subsection{Adaptive Behavior Policy by Round}
+The adaptive behavior policy value was estimated at \emph{every} round using
+context-reweighted estimators on cumulative seen data, and we also report
+context-reweighted batch reward means. Full per-round values are included in
+the generated tables below.
+
+\begin{table}[p]
+\centering
+\scriptsize
+\caption{Assistments: behavior policy values by round (context-reweighted).}
+\label{tab:beh_round_assistments}
+\input{generated_tables/table_behavior_rounds_assistments.tex}
+\end{table}
+
+\begin{table}[p]
+\centering
+\scriptsize
+\caption{SkillBuilder: behavior policy values by round (context-reweighted).}
+\label{tab:beh_round_skillbuilder}
+\input{generated_tables/table_behavior_rounds_skillbuilder.tex}
+\end{table}
+
+\begin{table}[p]
+\centering
+\scriptsize
+\caption{PIX: behavior policy values by round (context-reweighted).}
+\label{tab:beh_round_pix}
+\input{generated_tables/table_behavior_rounds_pix.tex}
+\end{table}
+
+\subsection{Policy Curves}
+For each dataset we plot:
+\begin{enumerate}
+  \item Learned policies from all estimators as mean difficulty
+  $\mathbb{E}[\delta\mid\theta]$ with the optimal IRT policy shown as dotted curve.
+  \item The same learned curves plus behavior policy snapshots (round 1, mid, last).
+\end{enumerate}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=0.48\textwidth]{../../pix_mapping/multi_dataset_last_round_report/assistments_policy_curves_all_estimators.png}
+\includegraphics[width=0.48\textwidth]{../../pix_mapping/multi_dataset_last_round_report/assistments_policy_curves_with_behavior_rounds.png}
+\caption{Assistments policy curves: learned estimators vs optimal IRT, and behavior evolution.}
+\label{fig:assistments_curves}
+\end{figure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=0.48\textwidth]{../../pix_mapping/multi_dataset_last_round_report/skillbuilder_policy_curves_all_estimators.png}
+\includegraphics[width=0.48\textwidth]{../../pix_mapping/multi_dataset_last_round_report/skillbuilder_policy_curves_with_behavior_rounds.png}
+\caption{SkillBuilder policy curves: learned estimators vs optimal IRT, and behavior evolution.}
+\label{fig:skillbuilder_curves}
+\end{figure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=0.48\textwidth]{../../pix_mapping/multi_dataset_last_round_report/pix_policy_curves_all_estimators.png}
+\includegraphics[width=0.48\textwidth]{../../pix_mapping/multi_dataset_last_round_report/pix_policy_curves_with_behavior_rounds.png}
+\caption{PIX policy curves: learned estimators vs optimal IRT, and behavior evolution.}
+\label{fig:pix_curves}
+\end{figure}
+
+\subsection{Discussion}
+Across datasets, the objective family mostly changes policy aggressiveness rather than
+completely reordering performance. In PIX, all non-DM objectives remain close with high ESS,
+suggesting low variance pressure after clipping. In Assistments/SkillBuilder, differences are
+larger, and DR/SNIPS provide more stable trade-offs against ESS than raw IPS-like objectives.
+Behavior-evolution plots show that learned policies generally move away from early-round behavior
+toward higher expected difficulty in high-$\theta$ regions, while the dotted IRT-optimal policy
+remains an upper reference envelope.
+
+\section{Main Outputs}
+Each run writes:
+\begin{itemize}
+  \item \texttt{ktm\_dataframe.csv}
+  \item \texttt{round\_bucket\_mapping.csv}
+  \item \texttt{gaussian\_fit\_by\_order.csv}
+  \item \texttt{offpolicy\_tuples.csv}
+  \item \texttt{policy\_round\_results.csv}
+  \item \texttt{policy\_value\_table.csv}
+  \item \texttt{policy\_coefficients\_by\_round.csv}
+  \item optional plots/animation.
+\end{itemize}
+
+\section{Reference Command}
+\begin{verbatim}
+python offpolicy_ktm_pipeline/run_full_pipeline.py \
+  --input-csv pix_mapping/pix_processed.csv \
+  --objective ips \
+  --denominator mixture \
+  --train-scope cumulative \
+  --context-target best_round_in_k \
+  --context-k-rounds 5 \
+  --balanced-minibatch \
+  --context-match-sampling \
+  --sigma-floor 0.2
+\end{verbatim}
+
+\end{document}
